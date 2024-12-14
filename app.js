@@ -2,11 +2,13 @@ import express from "express";
 import bodyParser from "body-parser";
 import connectDB from "./db.js";
 import User from "./models/user.js";
+import bcrypt from "bcrypt";
 
 //---------------------------------------------------
 
 const app = express();
 const port = 8080;
+const saltRounds = 10;
 app.use(express.static("public"));
 app.use(bodyParser.urlencoded({ extended: true }));
 connectDB();
@@ -31,9 +33,10 @@ app.get("/login", async (req, res) => {
 
 app.post("/register", async (req, res) => {
     try {
+        const hashedPassword = await bcrypt.hash(req.body.password, saltRounds);
         const newUser = await new User ({
             email: req.body.username,
-            password: req.body.password
+            password: hashedPassword
         });
         await newUser.save(newUser);
         res.redirect("secrets");
@@ -45,16 +48,18 @@ app.post("/register", async (req, res) => {
 
 app.post("/login", async (req, res) => {
     try {
-        const user = await User.findOne({
-            email: req.body.username,
-            password: req.body.password
-        });
-        if (user) {
-            if (user.password === req.body.password) {
-                res.redirect("secrets");
-            }
-        } else {
+        const user = await User.findOne({ email: req.body.username });
+
+        if (!user) {
             return res.status(404).send("User not found");
+        }
+
+        const isMatch = await bcrypt.compare(req.body.password, user.password);
+
+        if (isMatch) {
+            res.redirect("/secrets");
+        } else {
+            res.status(401).send("Invalid email or password");
         }
     } catch (error) {
         console.error(error);
